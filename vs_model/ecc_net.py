@@ -162,6 +162,12 @@ def pool_layer(x, eccParam, layer, ecc_depth, depth, name=None):
 
     return x
 
+@tf.custom_gradient
+def relu_with_custom_gradient(x):
+    def grad(dy):
+        return tf.ones_like(dy)
+    return tf.nn.relu(x), grad
+
 def block1_conv(x):
     x = tf.keras.layers.Conv2D(64, (3, 3),
                       activation='relu',

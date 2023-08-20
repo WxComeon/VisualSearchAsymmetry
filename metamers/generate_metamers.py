@@ -2,17 +2,22 @@ import os,sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import argparse
+from pathlib import Path
 from tqdm import tqdm
 import numpy as np
 import pandas as pd
 import torch
 import lpips
-import PIL.Image
 import tensorflow as tf
+physical_devices = tf.config.list_physical_devices('GPU')
+for dev in physical_devices:
+    tf.config.experimental.set_memory_growth(dev, True)
+    print(dev, tf.config.experimental.get_memory_growth(dev))
 from tensorflow.keras.applications.vgg16 import preprocess_input
 from vs_model.ecc_net import load_eccNET
+# from metamers.vgg16_custom import custom_vgg16
 from vgg16_training.image_data import image_dataset_from_directory
-from metamers.utils import get_layer_names, select_one_image, invert_preprocessing, feature_extraction, str2bool, CustomLearningRateSchedule, metamer_loss, postprocess_image
+from metamers.utils import select_one_image, invert_preprocessing, feature_extraction, str2bool, CustomLearningRateSchedule, metamer_loss, postprocess_image
 import matplotlib.pyplot as plt
 
 
@@ -24,7 +29,7 @@ parser.add_argument('--save_dir', type=str, default='/engram/nklab/wg2361/metame
 parser.add_argument('--i_batch', type=int, required=False)
 parser.add_argument('--batch_size', type=int, default=20, help='batch size')
 parser.add_argument('--image_size', type=int, default=224, help='image size')
-parser.add_argument('--layer_num', type=int, help='layer selection')
+parser.add_argument('--layer_name', type=str, help='layer selection')
 parser.add_argument('--desired_label', type=int, required=False, help='desired label')
 parser.add_argument('--visualize', type=str2bool, default=False, help='whether to visualize the generated metamers')
 args = parser.parse_args()
@@ -34,16 +39,13 @@ im_size = args.image_size
 batch_size = args.batch_size if not args.visualize else 1
 visualize = args.visualize
 model_dir = args.model_dir
-layer_num = args.layer_num
+layer_name = args.layer_name
 i_batch = args.i_batch
-print(f"generating batch {i_batch} metamers for layer {layer_num}")
+save_dir = args.save_dir
+Path(save_dir).mkdir(parents=True, exist_ok=True)
+print(f"generating batch {i_batch} metamers for {layer_name}")
 
 print("loading models...")
-physical_devices = tf.config.list_physical_devices('GPU')
-for dev in physical_devices:
-    tf.config.experimental.set_memory_growth(dev, True)
-    print(dev, tf.config.experimental.get_memory_growth(dev))
-
 models = []
 for model_type in model_types:
     if model_type == 'eccNET':
@@ -104,8 +106,6 @@ lr_schedule = CustomLearningRateSchedule(initial_learning_rate, decay_steps, dec
 df = []
 with tf.device('/gpu:0'):
     for model, model_type in zip(models, model_types):
-        layer_name = get_layer_names(model_type=model_type)[layer_num]
-        print(layer_name)
         feature_model = feature_extraction(model, [layer_name])
         target_features = feature_model.predict(target_images)
         assert target_features.shape[0] == batch_size
@@ -152,4 +152,4 @@ with tf.device('/gpu:0'):
             raise NotImplementedError
 
 df = pd.concat(df)
-df.to_csv(os.path.join(args.save_dir, f"metamer_lpips_layer_{layer_num}_batch_{i_batch}.csv"), index=False)
+df.to_csv(os.path.join(save_dir, f"metamer_lpips_{layer_name}_batch_{i_batch}.csv"), index=False)
