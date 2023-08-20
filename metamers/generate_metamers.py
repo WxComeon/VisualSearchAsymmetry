@@ -20,6 +20,7 @@ parser = argparse.ArgumentParser(description='Generate metamers')
 parser.add_argument('--model_dir', type=str, default='/engram/nklab/wg2361/eccNET/pretrained_model', help='directory of pretrained model')
 parser.add_argument('--model_types', type=str, nargs="+", default=['eccNET', 'baseline'], help='eccNET or baseline')
 parser.add_argument('--data_dir', type=str, default='/share/data/imagenet/raw-data/train')
+parser.add_argument('--save_dir', type=str, default='/engram/nklab/wg2361/metamers/summary_statistics')
 parser.add_argument('--i_batch', type=int, required=False)
 parser.add_argument('--batch_size', type=int, default=20, help='batch size')
 parser.add_argument('--image_size', type=int, default=224, help='image size')
@@ -33,6 +34,9 @@ im_size = args.image_size
 batch_size = args.batch_size if not args.visualize else 1
 visualize = args.visualize
 model_dir = args.model_dir
+layer_num = args.layer_num
+i_batch = args.i_batch
+print(f"generating batch {i_batch} metamers for layer {layer_num}")
 
 print("loading models...")
 physical_devices = tf.config.list_physical_devices('GPU')
@@ -91,8 +95,8 @@ with torch.no_grad():
 
 # optimizer learning rate schedule (Feather et al. 2022)
 initial_learning_rate = 1
-decay_steps = 6000
-decay_rate = 0.8
+decay_steps = 3000
+decay_rate = 0.5
 num_iterations = 24000
 lr_schedule = CustomLearningRateSchedule(initial_learning_rate, decay_steps, decay_rate)
 
@@ -100,7 +104,8 @@ lr_schedule = CustomLearningRateSchedule(initial_learning_rate, decay_steps, dec
 df = []
 with tf.device('/gpu:0'):
     for model, model_type in zip(models, model_types):
-        layer_name = get_layer_names(model_type=model_type)[args.layer_num]
+        layer_name = get_layer_names(model_type=model_type)[layer_num]
+        print(layer_name)
         feature_model = feature_extraction(model, [layer_name])
         target_features = feature_model.predict(target_images)
         assert target_features.shape[0] == batch_size
@@ -128,7 +133,7 @@ with tf.device('/gpu:0'):
             metamers = metamer_images.numpy()
             target_features = feature_model.predict(target_images)
             metamer_features = feature_model.predict(metamers)
-            corr_matrix = np.corrcoef(target_features[-1].reshape(batch_size, -1), metamer_features[-1].reshape(batch_size, -1))
+            corr_matrix = np.corrcoef(target_features.reshape(batch_size, -1), metamer_features.reshape(batch_size, -1))
             corrs = corr_matrix[:batch_size, batch_size:].diagonal()
             # LPIPS measure
             with torch.no_grad():
@@ -143,9 +148,8 @@ with tf.device('/gpu:0'):
                 'correlation': corrs.tolist(),
                 'lpips': dists.tolist()
             }))
-            import pdb; pdb.set_trace()
         else:
             raise NotImplementedError
 
 df = pd.concat(df)
-df.to_csv(os.path.join(args.save_dir, f"metamer_lpips_layer_{args.layer_num}_batch_{args.i_batch}.csv"), index=False)
+df.to_csv(os.path.join(args.save_dir, f"metamer_lpips_layer_{layer_num}_batch_{i_batch}.csv"), index=False)

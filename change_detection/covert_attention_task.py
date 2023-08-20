@@ -29,13 +29,18 @@ argparser = argparse.ArgumentParser()
 argparser.add_argument("--vda", type=int, help="visual degree of attention")
 args = argparser.parse_args()
 
+# physical_devices = tf.config.list_physical_devices('GPU')
+# for dev in physical_devices:
+#     tf.config.experimental.set_memory_growth(dev, True)
+#     print(dev, tf.config.experimental.get_memory_growth(dev))
+
 vda = args.vda
 data_root_dir = "/engram/nklab/wg2361/CBDatabase"
 stim_dir = os.path.join(data_root_dir, "Images")
 mask_dir = os.path.join(data_root_dir, "Masks")
 meta_file_path = os.path.join(data_root_dir, "CBDatabase_Size_Eccentricity_RT.xlsx")
 model_dir = "/engram/nklab/wg2361/eccNET/pretrained_model"
-model_types = ["eccNET", "baseline"]
+model_types = ["baseline", "eccNET"]
 output_dir = "/engram/nklab/wg2361/exps/cb_ecc"
 Path(output_dir).mkdir(parents=True, exist_ok=True)
 
@@ -93,7 +98,7 @@ for model_type in model_types:
         ecc_depth = 5
 
         model_path = os.path.join(model_dir, "vgg16_imagenet_filters.h5")
-        with tf.device("/GPU:0"):
+        with tf.device("/CPU:0"):
             _, model = load_eccNET(
                 model_path,
                 stimuli_shape=model_input_shape,
@@ -103,7 +108,7 @@ for model_type in model_types:
             )
 
     elif model_type == "baseline":
-        with tf.device("/GPU:0"):
+        with tf.device("/CPU:0"):
             model = tf.keras.applications.vgg16.VGG16(
                 include_top=False, weights=None, input_shape=model_input_shape
             )
@@ -128,6 +133,7 @@ for model_type in model_types:
 
 dfs = []
 for model_type in models.keys():
+    print(model_type)
     feature_model = feature_extraction(models[model_type], ["block5_conv3"])
     feature_batch = []
     for i_stim, stim in tqdm(enumerate(stims)):
@@ -156,15 +162,16 @@ for model_type in models.keys():
         model_attention = (model_attention)[:, Y_fixation:Y_fixation+eye_res*2, X_fixation:X_fixation+eye_res*2, :]
         model_attention = downsample_attention_map(model_attention, attention_size[model_type])
         
-        with tf.device("/GPU:0"):
+        with tf.device("/CPU:0"):
             model_features = feature_model.predict(model_stim)
             model_features = model_features * model_attention
             feature_batch.append(model_features.reshape(1,-1))
     feature_batch = np.concatenate(feature_batch, axis=0)
     dists = euclidean_dist(feature_batch[::2], feature_batch[1::2], axis=1, normalize=False)
+    del feature_batch
     df = pd.DataFrame({
-        'model_type':[model_type]*len(dists[model_type]),
-        'eccentricity': [vda] * len(dists[model_type]),
+        'model_type':[model_type]*len(dists),
+        'eccentricity': [vda] * len(dists),
         'stim_label': labels[::2],
         'model_dist': dists,
     })

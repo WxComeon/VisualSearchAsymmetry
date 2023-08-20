@@ -3,10 +3,9 @@
 #
 #SBATCH --account=nklab
 #SBATCH --job-name=ecc_task  # The job name.
-#SBATCH --gres=gpu:1
-#SBATCH --cpus-per-task=6
-#SBATCH --time=01-00:00
-#SBATCH --exclude=ax[03-17]
+#SBATCH -c 12
+#SBATCH --time=02-00:00
+#SBATCH --exclude=ax[03-19]
 
 cd /home/wg2361/VisualSearchAsymmetry
 
