@@ -151,7 +151,7 @@ def pool_layer(x, eccParam, layer, ecc_depth, depth, name=None):
     pool_type = eccParam['pool_type']
     fovea_size = eccParam['fovea_size']
     rf_quant = eccParam['rf_quant']
-
+    
     if ecc_depth < depth:
         if pool_type == 'max':
             x = tf.keras.layers.MaxPooling2D((rf_min_l[depth-1], rf_min_l[depth-1]), strides=(stride_l[depth-1], stride_l[depth-1]), padding='same', name=name)(x)
@@ -330,6 +330,7 @@ def load_eccNET(vgg_model_path, stimuli_shape=(224, 224, 3), target_shape=(28, 2
             layer_out[depth] = tf.identity(x)
 
         x = pool_layer(x, eccParam=eccParam, layer=depth, ecc_depth=ecc_depth, depth=depth, name="Layer" + str(depth))
+        out_units = [x]
 
         if comp_layer == "diff" and model_type == "target":
             for i in range(1, depth):
@@ -337,7 +338,6 @@ def load_eccNET(vgg_model_path, stimuli_shape=(224, 224, 3), target_shape=(28, 2
 
         depth += 1
 
-        out_units = []
         for i in range(3, 6):
             out_units.append(layer_out[i])
 
@@ -435,6 +435,7 @@ def load_VGG16(vgg_model_path, stimuli_shape=(224, 224, 3), target_shape=(28, 28
             layer_out[depth] = tf.identity(x)
 
         x = pool_layer(x, eccParam=eccParam, layer=depth, ecc_depth=ecc_depth, depth=depth, name="Layer" + str(depth))
+        out_units = [x]
 
         if comp_layer == "diff" and model_type == "target":
             for i in range(1, depth):
@@ -442,7 +443,6 @@ def load_VGG16(vgg_model_path, stimuli_shape=(224, 224, 3), target_shape=(28, 28
 
         depth += 1
 
-        out_units = []
         for i in range(3, 6):
             out_units.append(layer_out[i])
 
