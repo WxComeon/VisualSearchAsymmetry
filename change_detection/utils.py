@@ -8,10 +8,12 @@ import pandas as pd
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 from matplotlib.pyplot import figure
+from scipy.ndimage import gaussian_filter
 from tensorflow.keras.applications.vgg16 import preprocess_input
 import tensorflow as tf
 from tensorflow.keras.layers import Input
 from tensorflow.keras.models import Model
+from vs_model.ecc_net import pool_layer
 from metamers.utils import invert_preprocessing
 
 
@@ -175,22 +177,28 @@ def calc_triangle_sides(X_Y_ratio, vda, px2dva_unit=30):
     return X, Y
 
 
+def get_stim_coord(stim_label, meta_info, image_ratio, crop_left):
+    """get image object coordinate, resize according to image preprocessing parameters 
+    """
+    stim_id = int(stim_label.split("_")[0])
+    stim_side = "Left" if stim_label.split("_")[1] == "L" else "Right"
+    X = int((meta_info.loc[stim_id, f"X_{stim_side}"]-crop_left)*image_ratio)
+    Y = int(meta_info.loc[stim_id, f"Y_{stim_side}"]*image_ratio)
+    
+    return X, Y
+
 def get_fixation_point(
     stim_label, meta_info, stim_size, old_stim_size, crop_left, vda, px2dva_unit=30
 ):
-    """get fixation point given visual degree angle"""
+    """get fixation point given visual degree angle
+    X coordinate is column and Y coordinate is row
+    flip X and Y coordinate when converting to image coordinate
+    """
 
-    stim_id = int(stim_label.split("_")[0])
-    stim_side = "Right" if stim_label.split("_")[1] == "R" else "Left"
     X_max, Y_max = stim_size
-    X, Y = (
-        meta_info.loc[stim_id, f"X_{stim_side}"],
-        meta_info.loc[stim_id, f"Y_{stim_side}"],
-    )
-    X = X - crop_left
-
     resize_ratio = stim_size[0] / old_stim_size
-    X, Y = X * resize_ratio, Y * resize_ratio
+    X, Y = get_stim_coord(stim_label, meta_info, resize_ratio, crop_left)
+    
     X_sign, Y_sign = np.sign(X - X_max // 2), np.sign(Y_max // 2 - Y)
 
     if X_sign > 0 and Y_sign > 0:
@@ -252,3 +260,41 @@ def downsample_attention_map(model_attention, attention_size):
     im = np.expand_dims(np.array(im), axis=(0, 3))
 
     return im
+
+
+def create_gaussian_mask(image_size, point, sigma):
+    # Create an empty image
+    image = np.zeros(image_size)
+    
+    # Set the specified point to 1
+    image[point] = 1
+    
+    # Apply the Gaussian filter
+    return gaussian_filter(image, sigma=sigma)
+
+
+def get_pooling_layers(x):
+    eccParam = {}
+    eccParam["rf_min"] = [2] * 5
+    eccParam["stride"] = [2] * 5
+    eccParam["ecc_slope"] = [0, 0, 3.5 * 0.02, 8 * 0.02, 16 * 0.02]
+    eccParam["deg2px"] = [
+        round(30.0),
+        round(30.0 / 2),
+        round(30.0 / 4),
+        round(30.0 / 8),
+        round(30.0 / 16),
+    ]
+    eccParam["fovea_size"] = 4
+    eccParam["rf_quant"] = 1
+    eccParam["pool_type"] = "avg"
+    ecc_depth = 5
+    
+    for i_layer in np.arange(1,5):
+        x = pool_layer(x, 
+                       eccParam=eccParam, 
+                       layer=i_layer, 
+                       ecc_depth=ecc_depth, 
+                       depth=i_layer, 
+                       name="Layer" + str(i_layer))
+    return x
